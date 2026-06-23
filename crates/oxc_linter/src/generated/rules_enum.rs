@@ -224,6 +224,7 @@ pub use crate::rules::import::no_nodejs_modules::NoNodejsModules as ImportNoNode
 pub use crate::rules::import::no_relative_parent_imports::NoRelativeParentImports as ImportNoRelativeParentImports;
 pub use crate::rules::import::no_self_import::NoSelfImport as ImportNoSelfImport;
 pub use crate::rules::import::no_unassigned_import::NoUnassignedImport as ImportNoUnassignedImport;
+pub use crate::rules::import::no_useless_path_segments::NoUselessPathSegments as ImportNoUselessPathSegments;
 pub use crate::rules::import::no_webpack_loader_syntax::NoWebpackLoaderSyntax as ImportNoWebpackLoaderSyntax;
 pub use crate::rules::import::prefer_default_export::PreferDefaultExport as ImportPreferDefaultExport;
 pub use crate::rules::import::unambiguous::Unambiguous as ImportUnambiguous;
@@ -888,6 +889,7 @@ pub enum RuleEnum {
     ImportNoRelativeParentImports(ImportNoRelativeParentImports),
     ImportNoSelfImport(ImportNoSelfImport),
     ImportNoUnassignedImport(ImportNoUnassignedImport),
+    ImportNoUselessPathSegments(ImportNoUselessPathSegments),
     ImportNoWebpackLoaderSyntax(ImportNoWebpackLoaderSyntax),
     ImportPreferDefaultExport(ImportPreferDefaultExport),
     ImportUnambiguous(ImportUnambiguous),
@@ -1735,7 +1737,8 @@ const IMPORT_NO_NODEJS_MODULES_ID: usize = IMPORT_NO_NAMESPACE_ID + 1usize;
 const IMPORT_NO_RELATIVE_PARENT_IMPORTS_ID: usize = IMPORT_NO_NODEJS_MODULES_ID + 1usize;
 const IMPORT_NO_SELF_IMPORT_ID: usize = IMPORT_NO_RELATIVE_PARENT_IMPORTS_ID + 1usize;
 const IMPORT_NO_UNASSIGNED_IMPORT_ID: usize = IMPORT_NO_SELF_IMPORT_ID + 1usize;
-const IMPORT_NO_WEBPACK_LOADER_SYNTAX_ID: usize = IMPORT_NO_UNASSIGNED_IMPORT_ID + 1usize;
+const IMPORT_NO_USELESS_PATH_SEGMENTS_ID: usize = IMPORT_NO_UNASSIGNED_IMPORT_ID + 1usize;
+const IMPORT_NO_WEBPACK_LOADER_SYNTAX_ID: usize = IMPORT_NO_USELESS_PATH_SEGMENTS_ID + 1usize;
 const IMPORT_PREFER_DEFAULT_EXPORT_ID: usize = IMPORT_NO_WEBPACK_LOADER_SYNTAX_ID + 1usize;
 const IMPORT_UNAMBIGUOUS_ID: usize = IMPORT_PREFER_DEFAULT_EXPORT_ID + 1usize;
 const ESLINT_ACCESSOR_PAIRS_ID: usize = IMPORT_UNAMBIGUOUS_ID + 1usize;
@@ -2686,6 +2689,7 @@ impl RuleEnum {
             Self::ImportNoRelativeParentImports(_) => IMPORT_NO_RELATIVE_PARENT_IMPORTS_ID,
             Self::ImportNoSelfImport(_) => IMPORT_NO_SELF_IMPORT_ID,
             Self::ImportNoUnassignedImport(_) => IMPORT_NO_UNASSIGNED_IMPORT_ID,
+            Self::ImportNoUselessPathSegments(_) => IMPORT_NO_USELESS_PATH_SEGMENTS_ID,
             Self::ImportNoWebpackLoaderSyntax(_) => IMPORT_NO_WEBPACK_LOADER_SYNTAX_ID,
             Self::ImportPreferDefaultExport(_) => IMPORT_PREFER_DEFAULT_EXPORT_ID,
             Self::ImportUnambiguous(_) => IMPORT_UNAMBIGUOUS_ID,
@@ -3656,6 +3660,7 @@ impl RuleEnum {
             Self::ImportNoRelativeParentImports(_) => ImportNoRelativeParentImports::NAME,
             Self::ImportNoSelfImport(_) => ImportNoSelfImport::NAME,
             Self::ImportNoUnassignedImport(_) => ImportNoUnassignedImport::NAME,
+            Self::ImportNoUselessPathSegments(_) => ImportNoUselessPathSegments::NAME,
             Self::ImportNoWebpackLoaderSyntax(_) => ImportNoWebpackLoaderSyntax::NAME,
             Self::ImportPreferDefaultExport(_) => ImportPreferDefaultExport::NAME,
             Self::ImportUnambiguous(_) => ImportUnambiguous::NAME,
@@ -4614,6 +4619,7 @@ impl RuleEnum {
             Self::ImportNoRelativeParentImports(_) => ImportNoRelativeParentImports::CATEGORY,
             Self::ImportNoSelfImport(_) => ImportNoSelfImport::CATEGORY,
             Self::ImportNoUnassignedImport(_) => ImportNoUnassignedImport::CATEGORY,
+            Self::ImportNoUselessPathSegments(_) => ImportNoUselessPathSegments::CATEGORY,
             Self::ImportNoWebpackLoaderSyntax(_) => ImportNoWebpackLoaderSyntax::CATEGORY,
             Self::ImportPreferDefaultExport(_) => ImportPreferDefaultExport::CATEGORY,
             Self::ImportUnambiguous(_) => ImportUnambiguous::CATEGORY,
@@ -5627,6 +5633,7 @@ impl RuleEnum {
             Self::ImportNoRelativeParentImports(_) => ImportNoRelativeParentImports::FIX,
             Self::ImportNoSelfImport(_) => ImportNoSelfImport::FIX,
             Self::ImportNoUnassignedImport(_) => ImportNoUnassignedImport::FIX,
+            Self::ImportNoUselessPathSegments(_) => ImportNoUselessPathSegments::FIX,
             Self::ImportNoWebpackLoaderSyntax(_) => ImportNoWebpackLoaderSyntax::FIX,
             Self::ImportPreferDefaultExport(_) => ImportPreferDefaultExport::FIX,
             Self::ImportUnambiguous(_) => ImportUnambiguous::FIX,
@@ -6590,6 +6597,7 @@ impl RuleEnum {
             }
             Self::ImportNoSelfImport(_) => ImportNoSelfImport::documentation(),
             Self::ImportNoUnassignedImport(_) => ImportNoUnassignedImport::documentation(),
+            Self::ImportNoUselessPathSegments(_) => ImportNoUselessPathSegments::documentation(),
             Self::ImportNoWebpackLoaderSyntax(_) => ImportNoWebpackLoaderSyntax::documentation(),
             Self::ImportPreferDefaultExport(_) => ImportPreferDefaultExport::documentation(),
             Self::ImportUnambiguous(_) => ImportUnambiguous::documentation(),
@@ -7852,6 +7860,10 @@ impl RuleEnum {
                 .or_else(|| ImportNoSelfImport::schema(generator)),
             Self::ImportNoUnassignedImport(_) => ImportNoUnassignedImport::config_schema(generator)
                 .or_else(|| ImportNoUnassignedImport::schema(generator)),
+            Self::ImportNoUselessPathSegments(_) => {
+                ImportNoUselessPathSegments::config_schema(generator)
+                    .or_else(|| ImportNoUselessPathSegments::schema(generator))
+            }
             Self::ImportNoWebpackLoaderSyntax(_) => {
                 ImportNoWebpackLoaderSyntax::config_schema(generator)
                     .or_else(|| ImportNoWebpackLoaderSyntax::schema(generator))
@@ -10217,6 +10229,7 @@ impl RuleEnum {
             Self::ImportNoRelativeParentImports(_) => "import",
             Self::ImportNoSelfImport(_) => "import",
             Self::ImportNoUnassignedImport(_) => "import",
+            Self::ImportNoUselessPathSegments(_) => "import",
             Self::ImportNoWebpackLoaderSyntax(_) => "import",
             Self::ImportPreferDefaultExport(_) => "import",
             Self::ImportUnambiguous(_) => "import",
@@ -11117,6 +11130,9 @@ impl RuleEnum {
             }
             Self::ImportNoUnassignedImport(_) => Ok(Self::ImportNoUnassignedImport(
                 ImportNoUnassignedImport::from_configuration(value)?,
+            )),
+            Self::ImportNoUselessPathSegments(_) => Ok(Self::ImportNoUselessPathSegments(
+                ImportNoUselessPathSegments::from_configuration(value)?,
             )),
             Self::ImportNoWebpackLoaderSyntax(_) => Ok(Self::ImportNoWebpackLoaderSyntax(
                 ImportNoWebpackLoaderSyntax::from_configuration(value)?,
@@ -13764,6 +13780,7 @@ impl RuleEnum {
             Self::ImportNoRelativeParentImports(rule) => rule.to_configuration(),
             Self::ImportNoSelfImport(rule) => rule.to_configuration(),
             Self::ImportNoUnassignedImport(rule) => rule.to_configuration(),
+            Self::ImportNoUselessPathSegments(rule) => rule.to_configuration(),
             Self::ImportNoWebpackLoaderSyntax(rule) => rule.to_configuration(),
             Self::ImportPreferDefaultExport(rule) => rule.to_configuration(),
             Self::ImportUnambiguous(rule) => rule.to_configuration(),
@@ -14611,6 +14628,7 @@ impl RuleEnum {
             Self::ImportNoRelativeParentImports(rule) => rule.run(node, ctx),
             Self::ImportNoSelfImport(rule) => rule.run(node, ctx),
             Self::ImportNoUnassignedImport(rule) => rule.run(node, ctx),
+            Self::ImportNoUselessPathSegments(rule) => rule.run(node, ctx),
             Self::ImportNoWebpackLoaderSyntax(rule) => rule.run(node, ctx),
             Self::ImportPreferDefaultExport(rule) => rule.run(node, ctx),
             Self::ImportUnambiguous(rule) => rule.run(node, ctx),
@@ -15466,6 +15484,7 @@ impl RuleEnum {
             Self::ImportNoRelativeParentImports(rule) => rule.run_once(ctx),
             Self::ImportNoSelfImport(rule) => rule.run_once(ctx),
             Self::ImportNoUnassignedImport(rule) => rule.run_once(ctx),
+            Self::ImportNoUselessPathSegments(rule) => rule.run_once(ctx),
             Self::ImportNoWebpackLoaderSyntax(rule) => rule.run_once(ctx),
             Self::ImportPreferDefaultExport(rule) => rule.run_once(ctx),
             Self::ImportUnambiguous(rule) => rule.run_once(ctx),
@@ -16324,6 +16343,7 @@ impl RuleEnum {
             Self::ImportNoRelativeParentImports(rule) => rule.run_on_jest_node(jest_node, ctx),
             Self::ImportNoSelfImport(rule) => rule.run_on_jest_node(jest_node, ctx),
             Self::ImportNoUnassignedImport(rule) => rule.run_on_jest_node(jest_node, ctx),
+            Self::ImportNoUselessPathSegments(rule) => rule.run_on_jest_node(jest_node, ctx),
             Self::ImportNoWebpackLoaderSyntax(rule) => rule.run_on_jest_node(jest_node, ctx),
             Self::ImportPreferDefaultExport(rule) => rule.run_on_jest_node(jest_node, ctx),
             Self::ImportUnambiguous(rule) => rule.run_on_jest_node(jest_node, ctx),
@@ -17294,6 +17314,7 @@ impl RuleEnum {
             Self::ImportNoRelativeParentImports(rule) => rule.should_run(ctx),
             Self::ImportNoSelfImport(rule) => rule.should_run(ctx),
             Self::ImportNoUnassignedImport(rule) => rule.should_run(ctx),
+            Self::ImportNoUselessPathSegments(rule) => rule.should_run(ctx),
             Self::ImportNoWebpackLoaderSyntax(rule) => rule.should_run(ctx),
             Self::ImportPreferDefaultExport(rule) => rule.should_run(ctx),
             Self::ImportUnambiguous(rule) => rule.should_run(ctx),
@@ -18142,6 +18163,7 @@ impl RuleEnum {
             }
             Self::ImportNoSelfImport(_) => ImportNoSelfImport::IS_TSGOLINT_RULE,
             Self::ImportNoUnassignedImport(_) => ImportNoUnassignedImport::IS_TSGOLINT_RULE,
+            Self::ImportNoUselessPathSegments(_) => ImportNoUselessPathSegments::IS_TSGOLINT_RULE,
             Self::ImportNoWebpackLoaderSyntax(_) => ImportNoWebpackLoaderSyntax::IS_TSGOLINT_RULE,
             Self::ImportPreferDefaultExport(_) => ImportPreferDefaultExport::IS_TSGOLINT_RULE,
             Self::ImportUnambiguous(_) => ImportUnambiguous::IS_TSGOLINT_RULE,
@@ -19360,6 +19382,7 @@ impl RuleEnum {
             Self::ImportNoRelativeParentImports(_) => ImportNoRelativeParentImports::VERSION,
             Self::ImportNoSelfImport(_) => ImportNoSelfImport::VERSION,
             Self::ImportNoUnassignedImport(_) => ImportNoUnassignedImport::VERSION,
+            Self::ImportNoUselessPathSegments(_) => ImportNoUselessPathSegments::VERSION,
             Self::ImportNoWebpackLoaderSyntax(_) => ImportNoWebpackLoaderSyntax::VERSION,
             Self::ImportPreferDefaultExport(_) => ImportPreferDefaultExport::VERSION,
             Self::ImportUnambiguous(_) => ImportUnambiguous::VERSION,
@@ -20375,6 +20398,7 @@ impl RuleEnum {
             Self::ImportNoRelativeParentImports(_) => ImportNoRelativeParentImports::HAS_CONFIG,
             Self::ImportNoSelfImport(_) => ImportNoSelfImport::HAS_CONFIG,
             Self::ImportNoUnassignedImport(_) => ImportNoUnassignedImport::HAS_CONFIG,
+            Self::ImportNoUselessPathSegments(_) => ImportNoUselessPathSegments::HAS_CONFIG,
             Self::ImportNoWebpackLoaderSyntax(_) => ImportNoWebpackLoaderSyntax::HAS_CONFIG,
             Self::ImportPreferDefaultExport(_) => ImportPreferDefaultExport::HAS_CONFIG,
             Self::ImportUnambiguous(_) => ImportUnambiguous::HAS_CONFIG,
@@ -21427,6 +21451,7 @@ impl RuleEnum {
             Self::ImportNoRelativeParentImports(_) => ImportNoRelativeParentImports::INFO,
             Self::ImportNoSelfImport(_) => ImportNoSelfImport::INFO,
             Self::ImportNoUnassignedImport(_) => ImportNoUnassignedImport::INFO,
+            Self::ImportNoUselessPathSegments(_) => ImportNoUselessPathSegments::INFO,
             Self::ImportNoWebpackLoaderSyntax(_) => ImportNoWebpackLoaderSyntax::INFO,
             Self::ImportPreferDefaultExport(_) => ImportPreferDefaultExport::INFO,
             Self::ImportUnambiguous(_) => ImportUnambiguous::INFO,
@@ -22388,6 +22413,7 @@ impl RuleEnum {
             Self::ImportNoRelativeParentImports(rule) => rule.types_info(),
             Self::ImportNoSelfImport(rule) => rule.types_info(),
             Self::ImportNoUnassignedImport(rule) => rule.types_info(),
+            Self::ImportNoUselessPathSegments(rule) => rule.types_info(),
             Self::ImportNoWebpackLoaderSyntax(rule) => rule.types_info(),
             Self::ImportPreferDefaultExport(rule) => rule.types_info(),
             Self::ImportUnambiguous(rule) => rule.types_info(),
@@ -23230,6 +23256,7 @@ impl RuleEnum {
             Self::ImportNoRelativeParentImports(rule) => rule.run_info(),
             Self::ImportNoSelfImport(rule) => rule.run_info(),
             Self::ImportNoUnassignedImport(rule) => rule.run_info(),
+            Self::ImportNoUselessPathSegments(rule) => rule.run_info(),
             Self::ImportNoWebpackLoaderSyntax(rule) => rule.run_info(),
             Self::ImportPreferDefaultExport(rule) => rule.run_info(),
             Self::ImportUnambiguous(rule) => rule.run_info(),
@@ -24094,6 +24121,7 @@ pub static RULES: std::sync::LazyLock<Vec<RuleEnum>> = std::sync::LazyLock::new(
         RuleEnum::ImportNoRelativeParentImports(ImportNoRelativeParentImports::default()),
         RuleEnum::ImportNoSelfImport(ImportNoSelfImport::default()),
         RuleEnum::ImportNoUnassignedImport(ImportNoUnassignedImport::default()),
+        RuleEnum::ImportNoUselessPathSegments(ImportNoUselessPathSegments::default()),
         RuleEnum::ImportNoWebpackLoaderSyntax(ImportNoWebpackLoaderSyntax::default()),
         RuleEnum::ImportPreferDefaultExport(ImportPreferDefaultExport::default()),
         RuleEnum::ImportUnambiguous(ImportUnambiguous::default()),

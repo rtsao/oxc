@@ -1,0 +1,70 @@
+---
+source: crates/oxc_linter/src/tester.rs
+assertion_line: 490
+---
+
+  ⚠ import(no-useless-path-segments): Useless path segments for "./../files/malformed.js", should be "../files/malformed.js"
+   ╭─[malformed.js:1:8]
+ 1 │ import './../files/malformed.js'
+   ·        ─────────────────────────
+   ╰────
+
+  ⚠ import(no-useless-path-segments): Useless path segments for "./../files/malformed", should be "../files/malformed"
+   ╭─[malformed.js:1:8]
+ 1 │ import './../files/malformed'
+   ·        ──────────────────────
+   ╰────
+
+  ⚠ import(no-useless-path-segments): Useless path segments for "./deep//a", should be "./deep/a"
+   ╭─[malformed.js:1:8]
+ 1 │ import './deep//a'
+   ·        ───────────
+   ╰────
+
+  ⚠ import(no-useless-path-segments): Useless path segments for "./bar/index.js", should be "./bar"
+   ╭─[malformed.js:1:8]
+ 1 │ import './bar/index.js'
+   ·        ────────────────
+   ╰────
+
+  ⚠ import(no-useless-path-segments): Useless path segments for "./bar/index", should be "./bar"
+   ╭─[malformed.js:1:8]
+ 1 │ import './bar/index'
+   ·        ─────────────
+   ╰────
+
+  ⚠ import(no-useless-path-segments): Useless path segments for "./index", should be "."
+   ╭─[malformed.js:1:8]
+ 1 │ import './index'
+   ·        ─────────
+   ╰────
+
+  ⚠ import(no-useless-path-segments): Useless path segments for "../index", should be ".."
+   ╭─[malformed.js:1:8]
+ 1 │ import '../index'
+   ·        ──────────
+   ╰────
+
+  ⚠ import(no-useless-path-segments): Useless path segments for "../index.js", should be ".."
+   ╭─[malformed.js:1:8]
+ 1 │ import '../index.js'
+   ·        ─────────────
+   ╰────
+
+  ⚠ import(no-useless-path-segments): Useless path segments for "./", should be "."
+   ╭─[malformed.js:1:1]
+ 1 │ import('./')
+   · ────────────
+   ╰────
+
+  ⚠ import(no-useless-path-segments): Useless path segments for "../", should be ".."
+   ╭─[malformed.js:1:1]
+ 1 │ import('../')
+   · ─────────────
+   ╰────
+
+  ⚠ import(no-useless-path-segments): Useless path segments for "./deep//a", should be "./deep/a"
+   ╭─[malformed.js:1:1]
+ 1 │ import('./deep//a')
+   · ───────────────────
+   ╰────
