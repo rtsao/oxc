@@ -924,6 +924,62 @@ fn test_imports() {
             None,
             FixKind::DangerousSuggestion,
         ),
+        // Several unused specifiers in one declaration are removed in a single pass
+        (
+            "import { a, b, c, d, e } from './foo'; c();",
+            "import { c } from './foo'; c();",
+            None,
+            FixKind::DangerousSuggestion,
+        ),
+        (
+            "import { a, b, c } from './foo'; a();",
+            "import { a } from './foo'; a();",
+            None,
+            FixKind::DangerousSuggestion,
+        ),
+        (
+            "import foo, { a, b, c } from './foo'; b();",
+            "import { b } from './foo'; b();",
+            None,
+            FixKind::DangerousSuggestion,
+        ),
+        (
+            "import foo, { a, b } from './foo'; foo();",
+            "import foo from './foo'; foo();",
+            None,
+            FixKind::DangerousSuggestion,
+        ),
+        (
+            "import {\n  a,\n  b,\n  c,\n  d,\n} from './foo';\nb();",
+            "import {\n  b,\n} from './foo';\nb();",
+            None,
+            FixKind::DangerousSuggestion,
+        ),
+        (
+            "import {\n  a, // eslint-disable-line no-unused-vars\n  b,\n  c,\n} from './foo';\nc();",
+            "import {\n  a, // eslint-disable-line no-unused-vars\n  c,\n} from './foo';\nc();",
+            None,
+            FixKind::DangerousSuggestion,
+        ),
+        // Consecutive unused declarations are removed in a single pass
+        (
+            "import a from 'a';\nimport b from 'b';\nimport { c, d } from 'c';\nimport e from 'e';\ne();",
+            "import e from 'e';\ne();",
+            None,
+            FixKind::DangerousSuggestion,
+        ),
+        (
+            "import a from 'a'; import b from 'b';\nimport { c, d } from 'c';\nimport e from 'e';\nd();",
+            "import { d } from 'c';\nd();",
+            None,
+            FixKind::DangerousSuggestion,
+        ),
+        (
+            "import a from 'a';\n\nimport b from 'b';\nimport 'c';\nimport d from 'd';\nexport {};",
+            "\nimport 'c';\nexport {};",
+            None,
+            FixKind::DangerousSuggestion,
+        ),
     ];
 
     Tester::new(NoUnusedVars::NAME, NoUnusedVars::PLUGIN, pass, fail)

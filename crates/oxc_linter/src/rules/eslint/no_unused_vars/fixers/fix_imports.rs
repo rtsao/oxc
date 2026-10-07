@@ -1,10 +1,11 @@
-use oxc_ast::ast::{ImportDeclaration, ImportDeclarationSpecifier};
+use oxc_ast::ast::{ImportDeclaration, ImportDeclarationSpecifier, Statement};
 use oxc_span::{GetSpan, Span};
 
 use super::{NoUnusedVars, Symbol, count_whitespace_or_commas};
 use crate::{
     context::LintContext,
     fixer::{RuleFix, RuleFixer},
+    rule::RuleMeta,
 };
 
 impl NoUnusedVars {
@@ -25,8 +26,7 @@ impl NoUnusedVars {
             "Found an unused variable in an ImportDeclaration with no specifiers. This should be impossible."
         );
 
-        let Some((position, specifier)) = specifiers.iter().enumerate().find(|(_, s)| symbol == *s)
-        else {
+        let Some(position) = specifiers.iter().position(|s| symbol == s) else {
             debug_assert!(
                 false,
                 "Could not find matching specifier for symbol in ImportDeclaration."
@@ -34,59 +34,112 @@ impl NoUnusedVars {
             return fixer.noop();
         };
 
+        // Every diagnostic in this declaration reports the same fix, which removes all of its
+        // unused specifiers at once. Per-specifier fixes would be adjacent to each other, and
+        // the fixer skips fixes that touch an already-applied fix, so only some would apply.
+        let mut unused: Vec<bool> =
+            specifiers.iter().map(|specifier| self.is_unused_specifier(ctx, specifier)).collect();
+        unused[position] = true;
+
         // `import foo, { bar, baz } from 'module';` where all specifiers are unused
-        if self.all_specifiers_unused(ctx, specifiers) {
-            return Self::delete_import_declaration(fixer, import);
+        if unused.iter().all(|is_unused| *is_unused) {
+            return self.delete_unused_import_declarations(fixer, ctx, import);
         }
 
-        // Count named imports (excludes default and namespace imports)
-        let named_import_count = specifiers
-            .iter()
-            .filter(|s| matches!(s, ImportDeclarationSpecifier::ImportSpecifier(_)))
-            .count();
+        let fixer = fixer.for_multifix();
+        let mut fix = fixer.new_fix_with_capacity(unused.iter().filter(|u| **u).count());
 
-        match specifier {
-            ImportDeclarationSpecifier::ImportNamespaceSpecifier(_) => {
-                Self::remove_namespace_import(fixer, specifiers, specifier)
-            }
-            ImportDeclarationSpecifier::ImportDefaultSpecifier(_) => {
-                Self::remove_default_import(fixer, specifiers, specifier)
-            }
-            ImportDeclarationSpecifier::ImportSpecifier(_) => {
-                if named_import_count == 1 {
-                    return Self::remove_named_imports_block(fixer, import, specifiers);
+        for (specifier, _) in specifiers.iter().zip(&unused).filter(|(_, is_unused)| **is_unused) {
+            match specifier {
+                ImportDeclarationSpecifier::ImportNamespaceSpecifier(_) => {
+                    fix.push(Self::remove_namespace_import(fixer, specifiers, specifier));
                 }
-
-                Self::remove_specifier_from_list(fixer, specifiers, position, specifier)
+                ImportDeclarationSpecifier::ImportDefaultSpecifier(_) => {
+                    fix.push(Self::remove_default_import(fixer, specifiers, specifier));
+                }
+                ImportDeclarationSpecifier::ImportSpecifier(_) => {}
             }
         }
+
+        let named: Vec<_> = specifiers
+            .iter()
+            .zip(unused.iter().copied())
+            .filter(|(s, _)| matches!(s, ImportDeclarationSpecifier::ImportSpecifier(_)))
+            .collect();
+
+        if !named.is_empty() && named.iter().all(|(_, is_unused)| *is_unused) {
+            fix.push(Self::remove_named_imports_block(fixer, import, specifiers));
+        } else {
+            for (named_pos, _) in named.iter().enumerate().filter(|(_, (_, is_unused))| *is_unused)
+            {
+                let followed_by_kept = named[named_pos + 1..].iter().any(|(_, u)| !u);
+                fix.push(Self::remove_named_specifier(fixer, &named, named_pos, followed_by_kept));
+            }
+        }
+
+        fix.with_message("Remove unused import")
     }
 
-    /// Check if all specifiers in the import are unused (have no references)
-    fn all_specifiers_unused(
+    /// Check if a specifier is unused (has no references) and reported by this rule
+    fn is_unused_specifier(
         &self,
         ctx: &LintContext<'_>,
-        specifiers: &[ImportDeclarationSpecifier<'_>],
+        specifier: &ImportDeclarationSpecifier<'_>,
     ) -> bool {
-        specifiers.iter().all(|specifier| {
-            let specifier_symbol =
-                Symbol::new(ctx, ctx.module_record(), specifier.local().symbol_id());
-            !Self::should_skip_symbol(&specifier_symbol)
-                && self.is_ignored(&specifier_symbol).is_none()
-                && !specifier_symbol.is_exported_binding()
-                && !specifier_symbol.has_usages(self)
+        let specifier_symbol = Symbol::new(ctx, ctx.module_record(), specifier.local().symbol_id());
+        !Self::should_skip_symbol(&specifier_symbol)
+            && self.is_ignored(&specifier_symbol).is_none()
+            && !specifier_symbol.is_exported_binding()
+            && !specifier_symbol.has_usages(self)
+            && !ctx.disable_directives().contains(Self::NAME, specifier_symbol.span())
+    }
+
+    /// Check if a declaration has specifiers and all of them are unused
+    fn all_specifiers_unused(&self, ctx: &LintContext<'_>, import: &ImportDeclaration<'_>) -> bool {
+        import.specifiers.as_ref().is_some_and(|specifiers| {
+            !specifiers.is_empty()
+                && specifiers.iter().all(|specifier| self.is_unused_specifier(ctx, specifier))
         })
     }
 
-    /// Delete the entire import declaration, preserving blank lines appropriately
-    #[expect(clippy::cast_possible_truncation)]
-    fn delete_import_declaration<'a>(
+    /// Delete the entire import declaration, along with neighboring top-level declarations whose
+    /// specifiers are all unused when their deletions would be adjacent. Every diagnostic in such
+    /// a run reports the same fix, since the fixer would skip all but every other adjacent fix.
+    fn delete_unused_import_declarations<'a>(
+        &self,
         fixer: RuleFixer<'_, 'a>,
+        ctx: &LintContext<'a>,
         import: &ImportDeclaration<'a>,
     ) -> RuleFix {
-        let mut span = import.span;
         let source = fixer.source_text();
+        let mut span = Self::import_declaration_deletion_span(source, import.span);
 
+        let body = &ctx.nodes().program().body;
+        if let Ok(index) = body.binary_search_by_key(&import.span.start, |s| s.span().start) {
+            for statement in body[..index].iter().rev() {
+                let Statement::ImportDeclaration(prev) = statement else { break };
+                let prev_span = Self::import_declaration_deletion_span(source, prev.span);
+                if prev_span.end < span.start || !self.all_specifiers_unused(ctx, prev) {
+                    break;
+                }
+                span.start = prev_span.start;
+            }
+            for statement in &body[index + 1..] {
+                let Statement::ImportDeclaration(next) = statement else { break };
+                let next_span = Self::import_declaration_deletion_span(source, next.span);
+                if next_span.start > span.end || !self.all_specifiers_unused(ctx, next) {
+                    break;
+                }
+                span.end = next_span.end;
+            }
+        }
+
+        fixer.delete_range(span)
+    }
+
+    /// The span deleted for an import declaration, preserving blank lines appropriately
+    #[expect(clippy::cast_possible_truncation)]
+    fn import_declaration_deletion_span(source: &str, mut span: Span) -> Span {
         let before_import = &source[..(span.start as usize)];
         let leading_whitespace: u32 = before_import
             .chars()
@@ -105,7 +158,7 @@ impl NoUnusedVars {
             .sum();
         span.end += trailing_newlines;
 
-        fixer.delete_range(span)
+        span
     }
 
     /// Remove the entire `{ ... }` block when all named imports are removed
@@ -222,70 +275,50 @@ impl NoUnusedVars {
         fixer.delete_range(span)
     }
 
-    /// Remove a specifier from a list, handling comma placement properly
+    /// Remove a named specifier along with one adjacent separator. The separator after it is
+    /// removed when a kept specifier follows, otherwise the one before it, so that removing
+    /// several neighboring specifiers in one fix never produces overlapping ranges.
     #[expect(clippy::cast_possible_truncation)]
-    fn remove_specifier_from_list<'a>(
+    fn remove_named_specifier<'a>(
         fixer: RuleFixer<'_, 'a>,
-        specifiers: &[ImportDeclarationSpecifier<'a>],
-        position: usize,
-        specifier: &ImportDeclarationSpecifier<'a>,
+        named: &[(&ImportDeclarationSpecifier<'a>, bool)],
+        named_pos: usize,
+        followed_by_kept: bool,
     ) -> RuleFix {
         let source = fixer.source_text();
-        let span = specifier.span();
+        let span = named[named_pos].0.span();
+        let text_after = &source[(span.end as usize)..];
 
-        let named_imports: Vec<_> = specifiers
-            .iter()
-            .enumerate()
-            .filter(|(_, s)| matches!(s, ImportDeclarationSpecifier::ImportSpecifier(_)))
-            .collect();
-
-        let named_position = named_imports.iter().position(|(idx, _)| *idx == position);
-
-        let Some(named_pos) = named_position else {
-            debug_assert!(false, "Expected to find named import position.");
-            return fixer.noop();
-        };
-
-        let is_last_named = named_pos == named_imports.len() - 1;
-        let is_first_named = named_pos == 0;
-
-        if is_last_named && !is_first_named {
-            let prev_specifier = named_imports.get(named_pos - 1).map(|(_, s)| s);
-            if let Some(prev) = prev_specifier {
-                let delete_start = prev.span().end;
-                let delete_end = span.end;
-
-                let text_after = &source[(span.end as usize)..];
-                let has_trailing_comma = text_after.trim_start().starts_with(',');
-
-                if has_trailing_comma {
-                    let trailing_space: u32 = text_after
-                        .chars()
-                        .take_while(|c| c.is_whitespace())
-                        .map(|c| c.len_utf8() as u32)
-                        .sum();
-                    let delete_span = Span::new(delete_start, delete_end + trailing_space);
-                    return fixer.delete_range(delete_span);
-                }
-
-                let delete_span = Span::new(delete_start, delete_end);
-                return fixer.delete_range(delete_span);
+        if !followed_by_kept {
+            // A kept specifier precedes this one because not every named specifier is removed.
+            let Some((prev, _)) = named_pos.checked_sub(1).and_then(|i| named.get(i)) else {
+                debug_assert!(false, "Expected a kept named import before the removed one.");
+                return fixer.noop();
+            };
+            let mut delete_end = span.end;
+            if named_pos == named.len() - 1 && text_after.trim_start().starts_with(',') {
+                let trailing_space: u32 = text_after
+                    .chars()
+                    .take_while(|c| c.is_whitespace())
+                    .map(|c| c.len_utf8() as u32)
+                    .sum();
+                delete_end += trailing_space;
             }
+            return fixer.delete_range(Span::new(prev.span().end, delete_end));
         }
 
-        let text_after = &source[(span.end as usize)..];
         let trailing = count_whitespace_or_commas(text_after.chars());
-        if let Some((_, next_specifier)) = named_imports.get(named_pos + 1)
+        if let Some((next_specifier, _)) = named.get(named_pos + 1)
             && let Some(offset) =
                 fixer.find_next_token_within(span.end, next_specifier.span().start, ",")
             && offset >= trailing
         {
             // A comment stopped the whitespace scan before the separator.
             // Remove the comma separately to preserve the comment.
-            let mut fix = fixer.for_multifix().new_fix_with_capacity(2);
+            let mut fix = fixer.new_fix_with_capacity(2);
             fix.push(fixer.delete_range(span));
             fix.push(fixer.delete_range(Span::sized(span.end + offset, 1)));
-            return fix.with_message("Remove unused import");
+            return fix;
         }
         fixer.delete_range(span.expand_right(trailing))
     }
